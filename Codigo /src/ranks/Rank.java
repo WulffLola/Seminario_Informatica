@@ -1,5 +1,4 @@
-package rank;
-
+package ranks;
 
 public class Rank {
     private int id;
@@ -12,7 +11,6 @@ public class Rank {
         this.level = level;
     }
 
-    // Getters y setters
     public int getId() { return id; }
     public void setId(int id) { this.id = id; }
 
@@ -24,6 +22,6 @@ public class Rank {
 
     @Override
     public String toString() {
-        return name + " (Level " + level + ")";
+        return name + " (Nivel " + level + ")";
     }
 }

@@ -20,7 +20,6 @@ public class LoginApp {
     }
 
     private static void placeComponents(JPanel panel) {
-
         panel.setLayout(null);
 
         JLabel userLabel = new JLabel("Usuario:");
@@ -54,14 +53,14 @@ public class LoginApp {
 
                 boolean autenticado = AuthService.login(username, password);
                 if (autenticado) {
-                    JOptionPane.showMessageDialog(panel, "Bienvenido, " + username);
-                    SwingUtilities.getWindowAncestor(panel).dispose(); // Cierra la ventana de login
-                    app.MainMenu.mostrarMenu(username); // Abre el menú principal
+                    String role = AuthService.getRole(username);
+                    JOptionPane.showMessageDialog(panel, "Bienvenido, " + username + " (" + role + ")");
+                    SwingUtilities.getWindowAncestor(panel).dispose(); // cerrar login
+                    app.MainMenu.mostrarMenu(username, role); // pasar usuario y rol al menú
                 } else {
                     messageLabel.setText("Usuario o contraseña incorrectos");
                 }
             }
         });
-
     }
 }

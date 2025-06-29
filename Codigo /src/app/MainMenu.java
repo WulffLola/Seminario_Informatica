@@ -1,64 +1,100 @@
 package app;
 
-import rank.RankPanel;
+import fleets.FleetPanel;
 import people.PeoplePanel;
+import ranks.RankPanel;
+import ships.ShipPanel;
+import stations.StationPanel;
 
 import javax.swing.*;
 import java.awt.*;
 
 public class MainMenu {
 
-    public static void mostrarMenu(String username) {
-        JFrame frame = new JFrame("Panel Principal - Bienvenido " + username);
-        frame.setSize(400, 300);
+    public static void mostrarMenu(String username, String role) {
+        JFrame frame = new JFrame("Panel Principal - Bienvenido " + username + " (" + role + ")");
+        frame.setSize(800, 600);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setLocationRelativeTo(null);
 
-        JPanel panel = new JPanel();
-        panel.setLayout(new GridLayout(5, 1, 10, 10));
+        JPanel mainPanel = new JPanel(new CardLayout());
+
+        JPanel menuPanel = new JPanel();
+        menuPanel.setLayout(new GridLayout(6, 1, 10, 10));
 
         JButton fleetsButton = new JButton("Flotas");
         JButton peopleButton = new JButton("Tripulación");
         JButton ranksButton = new JButton("Rangos");
         JButton shipsButton = new JButton("Barcos");
         JButton stationsButton = new JButton("Estaciones");
+        JButton exitButton = new JButton("Cerrar sesión");
 
-        panel.add(fleetsButton);
-        panel.add(peopleButton);
-        panel.add(ranksButton);
-        panel.add(shipsButton);
-        panel.add(stationsButton);
+        if (!"consultor".equalsIgnoreCase(role)) {
+            menuPanel.add(fleetsButton);
+            menuPanel.add(peopleButton);
+            menuPanel.add(ranksButton);
+            menuPanel.add(shipsButton);
+            menuPanel.add(stationsButton);
+        } else {
+            menuPanel.add(fleetsButton);
+            menuPanel.add(peopleButton);
+            menuPanel.add(ranksButton);
+            menuPanel.add(shipsButton);
+            menuPanel.add(stationsButton);
+        }
+        menuPanel.add(exitButton);
 
-        frame.add(panel);
+        mainPanel.add(menuPanel, "menu");
+
+        // Paneles individuales
+        FleetPanel fleetPanel = new FleetPanel(role);
+        PeoplePanel peoplePanel = new PeoplePanel(role);
+        RankPanel rankPanel = new RankPanel(role);
+        ShipPanel shipPanel = new ShipPanel(role);
+        StationPanel stationPanel = new StationPanel(role);
+
+        // Agregamos botón para volver en cada panel
+        agregarBotonVolver(fleetPanel, mainPanel);
+        agregarBotonVolver(peoplePanel, mainPanel);
+        agregarBotonVolver(rankPanel, mainPanel);
+        agregarBotonVolver(shipPanel, mainPanel);
+        agregarBotonVolver(stationPanel, mainPanel);
+
+        mainPanel.add(fleetPanel, "flotas");
+        mainPanel.add(peoplePanel, "tripulacion");
+        mainPanel.add(rankPanel, "rangos");
+        mainPanel.add(shipPanel, "barcos");
+        mainPanel.add(stationPanel, "estaciones");
+
+        // Listeners
+        fleetsButton.addActionListener(e -> mostrarPantalla(mainPanel, "flotas"));
+        peopleButton.addActionListener(e -> mostrarPantalla(mainPanel, "tripulacion"));
+        ranksButton.addActionListener(e -> mostrarPantalla(mainPanel, "rangos"));
+        shipsButton.addActionListener(e -> mostrarPantalla(mainPanel, "barcos"));
+        stationsButton.addActionListener(e -> mostrarPantalla(mainPanel, "estaciones"));
+        exitButton.addActionListener(e -> {
+            frame.dispose();
+            users.LoginApp.mostrarLogin();
+        });
+
+        frame.add(mainPanel);
         frame.setVisible(true);
+    }
 
-        // Mensajes temporales para botones no implementados
-        fleetsButton.addActionListener(e -> JOptionPane.showMessageDialog(frame, "Entrando a Flotas..."));
-        shipsButton.addActionListener(e -> JOptionPane.showMessageDialog(frame, "Entrando a Barcos..."));
-        stationsButton.addActionListener(e -> JOptionPane.showMessageDialog(frame, "Entrando a Estaciones..."));
+    private static void mostrarPantalla(JPanel contenedor, String nombre) {
+        CardLayout cl = (CardLayout) contenedor.getLayout();
+        cl.show(contenedor, nombre);
+    }
 
-        // Abrir panel de personas al presionar Tripulación
-        peopleButton.addActionListener(e -> {
-            JFrame peopleFrame = new JFrame("Gestión de Tripulación");
-            peopleFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-            peopleFrame.add(new PeoplePanel());
-            peopleFrame.setSize(700, 400);
-            peopleFrame.setLocationRelativeTo(frame);
-            peopleFrame.setVisible(true);
-        });
-
-        // Abrir panel de rangos al presionar Rangos
-        ranksButton.addActionListener(e -> {
-            JFrame rankFrame = new JFrame("Gestión de Rangos");
-            rankFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-            rankFrame.add(new RankPanel());
-            rankFrame.setSize(500, 300);
-            rankFrame.setLocationRelativeTo(frame);
-            rankFrame.setVisible(true);
-        });
+    private static void agregarBotonVolver(JPanel panel, JPanel contenedor) {
+        JButton volverBtn = new JButton("⬅ Volver al menú");
+        volverBtn.addActionListener(e -> mostrarPantalla(contenedor, "menu"));
+        JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        top.add(volverBtn);
+        panel.add(top, BorderLayout.SOUTH);
     }
 
     public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> mostrarMenu("UsuarioPrueba"));
+        SwingUtilities.invokeLater(() -> mostrarMenu("UsuarioPrueba", "admin")); // o "consultor"
     }
 }

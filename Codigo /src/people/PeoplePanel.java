@@ -1,9 +1,12 @@
 package people;
 
+import data.DBConnection;
+
 import javax.swing.*;
 import javax.swing.table.*;
 import java.awt.*;
 import java.awt.event.*;
+import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -12,70 +15,140 @@ public class PeoplePanel extends JPanel {
     private List<Person> people = new ArrayList<>();
     private PersonTableModel tableModel;
     private JTable table;
-    private int nextId = 4;
+    private final boolean isConsultor;
 
-    public PeoplePanel() {
+    public PeoplePanel(String role) {
+        this.isConsultor = "consultor".equalsIgnoreCase(role);
         setLayout(new BorderLayout());
-
-        // Datos ficticios
-        people.add(new Person(1, "Juan", "Perez", "12345678", "1980-01-15", "Capitán"));
-        people.add(new Person(2, "Ana", "Gómez", "87654321", "1990-05-23", "Teniente"));
-        people.add(new Person(3, "Luis", "Díaz", "11223344", "1985-11-30", "Alférez"));
 
         tableModel = new PersonTableModel();
         table = new JTable(tableModel);
 
-        // Configurar botones en las columnas
-        table.getColumn("Editar").setCellRenderer(new ButtonRenderer());
-        table.getColumn("Editar").setCellEditor(new ButtonEditor(new JCheckBox(), "Editar"));
-
-        table.getColumn("Eliminar").setCellRenderer(new ButtonRenderer());
-        table.getColumn("Eliminar").setCellEditor(new ButtonEditor(new JCheckBox(), "Eliminar"));
+        if (!isConsultor) {
+            table.getColumn("Editar").setCellRenderer(new ButtonRenderer());
+            table.getColumn("Editar").setCellEditor(new ButtonEditor(new JCheckBox(), "Editar"));
+            table.getColumn("Eliminar").setCellRenderer(new ButtonRenderer());
+            table.getColumn("Eliminar").setCellEditor(new ButtonEditor(new JCheckBox(), "Eliminar"));
+        }
 
         JScrollPane scrollPane = new JScrollPane(table);
 
-        JButton btnCreate = new JButton("Crear Persona");
-        btnCreate.addActionListener(e -> crearPersona());
-
         JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        topPanel.add(btnCreate);
+        if (!isConsultor) {
+            JButton btnCreate = new JButton("Crear persona");
+            btnCreate.addActionListener(e -> crearPersona());
+            topPanel.add(btnCreate);
+        }
 
         add(topPanel, BorderLayout.NORTH);
         add(scrollPane, BorderLayout.CENTER);
+
+        cargarPersonasDesdeDB();
+    }
+
+    private void cargarPersonasDesdeDB() {
+        people.clear();
+        try (Connection conn = DBConnection.connect();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(
+                     "SELECT p.id, p.name, p.last_name, p.dni, p.birthdate, r.name AS rank_name " +
+                     "FROM Person p JOIN Ranks r ON p.rank_id = r.id")) {
+
+            while (rs.next()) {
+                people.add(new Person(
+                        rs.getInt("id"),
+                        rs.getString("name"),
+                        rs.getString("last_name"),
+                        rs.getString("dni"),
+                        rs.getString("birthdate"),
+                        rs.getString("rank_name")
+                ));
+            }
+
+        } catch (SQLException e) {
+            JOptionPane.showMessageDialog(this, "Error al cargar personas: " + e.getMessage());
+        }
+        tableModel.fireTableDataChanged();
     }
 
     private void crearPersona() {
         PersonDialog dialog = new PersonDialog(null);
         dialog.setVisible(true);
-        Person nuevo = dialog.getPerson();
-        if (nuevo != null) {
-            nuevo.setId(nextId++);
-            people.add(nuevo);
-            tableModel.fireTableDataChanged();
+        Person nueva = dialog.getPerson();
+        if (nueva != null) {
+            try (Connection conn = DBConnection.connect()) {
+                int rankId = getRankIdByName(nueva.getRankName(), conn);
+                String sql = "INSERT INTO Person (name, last_name, dni, birthdate, rank_id) VALUES (?, ?, ?, ?, ?)";
+                PreparedStatement stmt = conn.prepareStatement(sql);
+                stmt.setString(1, nueva.getName());
+                stmt.setString(2, nueva.getLastName());
+                stmt.setString(3, nueva.getDni());
+                stmt.setString(4, nueva.getBirthdate());
+                stmt.setInt(5, rankId);
+                stmt.executeUpdate();
+                cargarPersonasDesdeDB();
+            } catch (SQLException e) {
+                JOptionPane.showMessageDialog(this, "Error al insertar persona: " + e.getMessage());
+            }
         }
     }
 
     private void editarPersona(int row) {
-        Person toEdit = people.get(row);
-        PersonDialog dialog = new PersonDialog(null, toEdit);
+        Person personaOriginal = people.get(row);
+        PersonDialog dialog = new PersonDialog(null, personaOriginal);
         dialog.setVisible(true);
-        Person updated = dialog.getPerson();
-        if (updated != null) {
-            people.set(row, updated);
-            tableModel.fireTableDataChanged();
+        Person editada = dialog.getPerson();
+        if (editada != null) {
+            try (Connection conn = DBConnection.connect()) {
+                int rankId = getRankIdByName(editada.getRankName(), conn);
+                String sql = "UPDATE Person SET name = ?, last_name = ?, dni = ?, birthdate = ?, rank_id = ? WHERE id = ?";
+                PreparedStatement stmt = conn.prepareStatement(sql);
+                stmt.setString(1, editada.getName());
+                stmt.setString(2, editada.getLastName());
+                stmt.setString(3, editada.getDni());
+                stmt.setString(4, editada.getBirthdate());
+                stmt.setInt(5, rankId);
+                stmt.setInt(6, personaOriginal.getId());
+                stmt.executeUpdate();
+                cargarPersonasDesdeDB();
+            } catch (SQLException e) {
+                JOptionPane.showMessageDialog(this, "Error al actualizar persona: " + e.getMessage());
+            }
         }
     }
 
     private void eliminarPersona(int row) {
-        int option = JOptionPane.showConfirmDialog(this, "¿Eliminar esta persona?", "Confirmar", JOptionPane.YES_NO_OPTION);
-        if (option == JOptionPane.YES_OPTION) {
-            people.remove(row);
-            tableModel.fireTableDataChanged();
+        Person p = people.get(row);
+        int confirm = JOptionPane.showConfirmDialog(this, "¿Eliminar esta persona?", "Confirmar", JOptionPane.YES_NO_OPTION);
+        if (confirm == JOptionPane.YES_OPTION) {
+            try (Connection conn = DBConnection.connect()) {
+                String sql = "DELETE FROM Person WHERE id = ?";
+                PreparedStatement stmt = conn.prepareStatement(sql);
+                stmt.setInt(1, p.getId());
+                stmt.executeUpdate();
+                cargarPersonasDesdeDB();
+            } catch (SQLException e) {
+                JOptionPane.showMessageDialog(this, "Error al eliminar persona: " + e.getMessage());
+            }
+        }
+    }
+
+    private int getRankIdByName(String rankName, Connection conn) throws SQLException {
+        String sql = "SELECT id FROM Ranks WHERE name = ?";
+        PreparedStatement stmt = conn.prepareStatement(sql);
+        stmt.setString(1, rankName);
+        ResultSet rs = stmt.executeQuery();
+        if (rs.next()) {
+            return rs.getInt("id");
+        } else {
+            throw new SQLException("Rango no encontrado: " + rankName);
         }
     }
 
     private class PersonTableModel extends AbstractTableModel {
-        private String[] columns = {"ID", "Nombre", "Apellido", "DNI", "Fecha Nac.", "Rango", "Editar", "Eliminar"};
+        private final String[] columns = isConsultor ?
+                new String[]{"ID", "Nombre", "Apellido", "DNI", "Fecha Nac.", "Rango"} :
+                new String[]{"ID", "Nombre", "Apellido", "DNI", "Fecha Nac.", "Rango", "Editar", "Eliminar"};
 
         @Override
         public int getRowCount() {
@@ -102,19 +175,18 @@ public class PeoplePanel extends JPanel {
                 case 3: return p.getDni();
                 case 4: return p.getBirthdate();
                 case 5: return p.getRankName();
-                case 6: return "Editar";
-                case 7: return "Eliminar";
+                case 6: return isConsultor ? null : "Editar";
+                case 7: return isConsultor ? null : "Eliminar";
+                default: return null;
             }
-            return null;
         }
 
         @Override
         public boolean isCellEditable(int row, int col) {
-            return col == 6 || col == 7;
+            return !isConsultor && (col == 6 || col == 7);
         }
     }
 
-    // Renderiza un botón en la celda
     private class ButtonRenderer extends JButton implements TableCellRenderer {
         public ButtonRenderer() {
             setOpaque(true);
@@ -128,19 +200,17 @@ public class PeoplePanel extends JPanel {
         }
     }
 
-    // Edita la celda como botón y maneja el evento click
     private class ButtonEditor extends DefaultCellEditor {
-        private JButton button;
-        private String label;
+        private final JButton button;
+        private final String label;
         private boolean clicked;
         private int row;
 
         public ButtonEditor(JCheckBox checkBox, String label) {
             super(checkBox);
-            button = new JButton();
-            button.setOpaque(true);
+            this.button = new JButton();
             this.label = label;
-
+            button.setOpaque(true);
             button.addActionListener(e -> fireEditingStopped());
         }
 
@@ -178,98 +248,11 @@ public class PeoplePanel extends JPanel {
         }
     }
 
-    // Diálogo para crear o editar persona
-    private class PersonDialog extends JDialog {
-        private JTextField tfName, tfLastName, tfDni, tfBirthdate, tfRankName;
-        private Person person;
-
-        public PersonDialog(Frame owner) {
-            this(owner, null);
-        }
-
-        public PersonDialog(Frame owner, Person p) {
-            super(owner, p == null ? "Crear Persona" : "Editar Persona", true);
-            setLayout(new GridLayout(6, 2, 10, 10));
-
-            add(new JLabel("Nombre:"));
-            tfName = new JTextField();
-            add(tfName);
-
-            add(new JLabel("Apellido:"));
-            tfLastName = new JTextField();
-            add(tfLastName);
-
-            add(new JLabel("DNI:"));
-            tfDni = new JTextField();
-            add(tfDni);
-
-            add(new JLabel("Fecha Nac. (YYYY-MM-DD):"));
-            tfBirthdate = new JTextField();
-            add(tfBirthdate);
-
-            add(new JLabel("Rango:"));
-            tfRankName = new JTextField();
-            add(tfRankName);
-
-            JButton btnOk = new JButton("OK");
-            btnOk.addActionListener(e -> onOk());
-            add(btnOk);
-
-            JButton btnCancel = new JButton("Cancelar");
-            btnCancel.addActionListener(e -> {
-                person = null;
-                dispose();
-            });
-            add(btnCancel);
-
-            if (p != null) {
-                tfName.setText(p.getName());
-                tfLastName.setText(p.getLastName());
-                tfDni.setText(p.getDni());
-                tfBirthdate.setText(p.getBirthdate());
-                tfRankName.setText(p.getRankName());
-                person = p;
-            }
-
-            pack();
-            setLocationRelativeTo(owner);
-        }
-
-        private void onOk() {
-            String name = tfName.getText().trim();
-            String lastName = tfLastName.getText().trim();
-            String dni = tfDni.getText().trim();
-            String birthdate = tfBirthdate.getText().trim();
-            String rank = tfRankName.getText().trim();
-
-            if (name.isEmpty() || lastName.isEmpty() || dni.isEmpty() || birthdate.isEmpty() || rank.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Complete todos los campos", "Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-
-            if (person == null) {
-                person = new Person(0, name, lastName, dni, birthdate, rank);
-            } else {
-                person.setName(name);
-                person.setLastName(lastName);
-                person.setDni(dni);
-                person.setBirthdate(birthdate);
-                person.setRankName(rank);
-            }
-            dispose();
-        }
-
-        public Person getPerson() {
-            return person;
-        }
-    }
-
-    // Para testear rápido
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
             JFrame frame = new JFrame("Personas");
             frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-            frame.add(new PeoplePanel());
+            frame.add(new PeoplePanel("admin")); // O "consultor"
             frame.setSize(700, 400);
             frame.setLocationRelativeTo(null);
             frame.setVisible(true);
